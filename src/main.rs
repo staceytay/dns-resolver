@@ -23,17 +23,7 @@ struct DNSQuestion {
 }
 
 impl Header {
-    // fn to_bytes(&self) -> Result<&'static [u8; 12], &'static str> {
     fn to_bytes(&self) -> Result<Vec<u8>, &'static str> {
-        let bytes2: [u8; 2] = [
-            self.id.to_be_bytes()[0],
-            self.id.to_be_bytes()[1],
-            // self.flags.to_be_bytes(),
-            // self.num_questions.to_be_bytes(),
-            // self.num_answers.to_be_bytes(),
-            // self.num_authorities.to_be_bytes(),
-            // self.num_additionals.to_be_bytes(),
-        ];
         let bytes: Vec<u8> = [
             self.id.to_be_bytes(),
             self.flags.to_be_bytes(),
@@ -65,64 +55,47 @@ fn encode_dns_name(name: String) -> String {
         .collect::<Vec<_>>()
         .join("")
         + &String::from_utf8((0 as u8).to_be_bytes().to_vec()).unwrap()
-    // + b'\x00'
 }
 
 const TYPE_A: u16 = 1;
-const CLASS_IN: u16 = 1;
 
-use std::{fmt::Write, num::ParseIntError};
+fn build_query(domain_name: String, record_type: u16) -> Vec<u8> {
+    const CLASS_IN: u16 = 1;
+    const RECURSION_DESIRED: u16 = 1 << 8;
 
-// From https://stackoverflow.com/questions/52987181/how-can-i-convert-a-hex-string-to-a-u8-slice
-pub fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
-        .collect()
+    let h = Header {
+        id: rand::thread_rng().gen_range(1..65535),
+        flags: RECURSION_DESIRED,
+        num_questions: 1,
+        num_additionals: 0,
+        num_authorities: 0,
+        num_answers: 0,
+    };
+
+    let q = DNSQuestion {
+        name: encode_dns_name(domain_name),
+        type_: record_type,
+        class: CLASS_IN,
+    };
+
+    let mut query = h.to_bytes().unwrap();
+    query.extend(q.to_bytes().unwrap());
+
+    query
 }
 
 fn main() -> std::io::Result<()> {
     {
-        let id = rand::thread_rng().gen_range(1..65535);
-        const RECURSION_DESIRED: u16 = 1 << 8;
-        let h = Header {
-            id: 0x8298,
-            // id: id,
-            flags: RECURSION_DESIRED,
-            num_questions: 1,
-            num_additionals: 0,
-            num_authorities: 0,
-            num_answers: 0,
-        };
-
-        let q = DNSQuestion {
-            name: encode_dns_name("www.example.com".to_string()),
-            type_: TYPE_A,
-            class: CLASS_IN,
-        };
-
-        // println!("{:?}", h.to_bytes());
-        // println!("{:?}", q.to_bytes());
-
+        let query = build_query("www.example.com".to_string(), TYPE_A);
         let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
-        // socket
-        //     .send_to(b"D\xcb\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x07example\x03com\x00\x00\x01\x00\x01", "8.8.8.8:53")
-        //     .expect("couldn't send data");
-        let mut query = h.to_bytes().unwrap();
-        query.extend(q.to_bytes().unwrap());
 
-        println!(
-            "{:?}",
-            decode_hex("82980100000100000000000003777777076578616d706c6503636f6d0000010001")
-                .unwrap()
-        );
-        println!("{:?}", query);
         socket
             .send_to(&query, "8.8.8.8:53")
             .expect("couldn't send data");
-        // let mut buf = [0; 1024];
-        // let (amt, src) = socket.recv_from(&mut buf)?;
-        // println!("{}", show(&buf));
+
+        let mut buf = [0; 1024];
+        let (amt, src) = socket.recv_from(&mut buf)?;
+        println!("{}", show(&buf));
     } // the socket is closed here
     Ok(())
 }
