@@ -30,9 +30,9 @@ impl DNSHeader {
             id: u16::from_be_bytes(buf[0..2].try_into().unwrap()),
             flags: u16::from_be_bytes(buf[2..4].try_into().unwrap()),
             num_questions: u16::from_be_bytes(buf[4..6].try_into().unwrap()),
-            num_additionals: u16::from_be_bytes(buf[6..8].try_into().unwrap()),
+            num_answers: u16::from_be_bytes(buf[6..8].try_into().unwrap()),
             num_authorities: u16::from_be_bytes(buf[8..10].try_into().unwrap()),
-            num_answers: u16::from_be_bytes(buf[10..12].try_into().unwrap()),
+            num_additionals: u16::from_be_bytes(buf[10..12].try_into().unwrap()),
         }
     }
 
