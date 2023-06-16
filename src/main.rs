@@ -25,7 +25,7 @@ struct DNSQuestion {
 }
 
 impl DNSHeader {
-    fn parse_header(buf: &[u8]) -> DNSHeader {
+    fn parse(buf: &[u8]) -> DNSHeader {
         DNSHeader {
             id: u16::from_be_bytes(buf[0..2].try_into().unwrap()),
             flags: u16::from_be_bytes(buf[2..4].try_into().unwrap()),
@@ -52,7 +52,7 @@ impl DNSHeader {
 
 impl DNSQuestion {
     // TODO: Return as Result.
-    fn parse_question(buf: &[u8], cursor: usize) -> (usize, DNSQuestion) {
+    fn parse(buf: &[u8], cursor: usize) -> (usize, DNSQuestion) {
         let (length, name) = decode_name(buf, cursor);
         let cursor = length + 1;
         let type_ = u16::from_be_bytes(buf[cursor..cursor + 2].try_into().unwrap());
@@ -116,10 +116,17 @@ struct DNSRecord {
     data: Vec<u8>,
 }
 
-struct DNSPacket {}
+#[derive(Debug)]
+struct DNSPacket {
+    header: DNSHeader,
+    questions: Vec<DNSQuestion>,
+    answers: Vec<DNSRecord>,
+    authorities: Vec<DNSRecord>,
+    additionals: Vec<DNSRecord>,
+}
 
 impl DNSRecord {
-    fn parse_record(buf: &[u8], cursor_start: usize) -> (usize, DNSRecord) {
+    fn parse(buf: &[u8], cursor_start: usize) -> (usize, DNSRecord) {
         let mut cursor = cursor_start;
 
         let (length, name) = decode_name(buf, cursor);
@@ -150,7 +157,56 @@ impl DNSRecord {
 }
 
 impl DNSPacket {
-    // fn parse(&self, buf: &[u8]) -> DNSPacket {}
+    fn parse(buf: &[u8]) -> DNSPacket {
+        let header = DNSHeader::parse(buf);
+
+        const HEADER_LENGTH: usize = 12;
+        let mut cursor = HEADER_LENGTH;
+
+        let mut questions = Vec::new();
+        for _ in 0..header.num_questions {
+            let (length, question) = DNSQuestion::parse(buf, cursor);
+            cursor += length;
+            questions.push(question);
+        }
+
+        let mut answers = Vec::new();
+        for _ in 0..header.num_answers {
+            let (length, answer) = DNSRecord::parse(buf, cursor);
+            cursor += length;
+            answers.push(answer);
+        }
+
+        let mut authorities = Vec::new();
+        for _ in 0..header.num_authorities {
+            let (length, authority) = DNSRecord::parse(buf, cursor);
+            cursor += length;
+            authorities.push(authority);
+        }
+
+        let mut additionals = Vec::new();
+        for _ in 0..header.num_additionals {
+            let (length, additional) = DNSRecord::parse(buf, cursor);
+            cursor += length;
+            additionals.push(additional);
+        }
+
+        DNSPacket {
+            header,
+            questions,
+            answers,
+            authorities,
+            additionals,
+        }
+        //         reader = BytesIO(data)
+        // header = parse_header(reader)
+        // questions = [parse_question(reader) for _ in range(header.num_questions)]
+        // answers = [parse(reader) for _ in range(header.num_answers)]
+        // authorities = [parse(reader) for _ in range(header.num_authorities)]
+        // additionals = [parse(reader) for _ in range(header.num_additionals)]
+
+        // return DNSPacket(header, questions, answers, authorities, additionals)
+    }
 }
 
 // Returns length of bytes read from buf and decoded name.
@@ -200,15 +256,18 @@ fn main() -> std::io::Result<()> {
 
         // println!("{}", show(&buf[..]));
 
-        let h = DNSHeader::parse_header(&buf[..]);
+        let h = DNSHeader::parse(&buf[..]);
         println!("h: {:?}", h);
 
         const HEADER_LENGTH: usize = 12;
-        let (q_len, q) = DNSQuestion::parse_question(&buf[..], HEADER_LENGTH);
+        let (q_len, q) = DNSQuestion::parse(&buf[..], HEADER_LENGTH);
         println!("q: {}: {:?}", q_len, q);
 
-        let (r_len, r) = DNSRecord::parse_record(&buf[..], HEADER_LENGTH + q_len);
+        let (r_len, r) = DNSRecord::parse(&buf[..], HEADER_LENGTH + q_len);
         println!("r: {}: {:?}", r_len, r);
+
+        let p = DNSPacket::parse(&buf[..]);
+        println!("p: {:#?}", p);
     } // the socket is closed here
     Ok(())
 }
