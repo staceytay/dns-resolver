@@ -242,33 +242,32 @@ fn decode_compressed_name(buf: &[u8], cursor_start: usize) -> String {
     decode_name(buf, pointer).1
 }
 
+// TODO: Maybe update domain_name to &str?
+fn lookup_domain(domain_name: String) -> String {
+    let query = build_query(domain_name, TYPE_A);
+    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+
+    socket
+        .send_to(&query, "8.8.8.8:53")
+        .expect("couldn't send data");
+
+    let mut buf = [0; 1024];
+    let (amt, src) = socket.recv_from(&mut buf).unwrap();
+
+    let p = DNSPacket::parse(&buf[..]);
+    println!("p: {:#?}", p);
+
+    p.answers[0]
+        .data
+        .iter()
+        .map(|t| t.to_string())
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
 fn main() -> std::io::Result<()> {
-    {
-        let query = build_query("www.example.com".to_string(), TYPE_A);
-        let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
-
-        socket
-            .send_to(&query, "8.8.8.8:53")
-            .expect("couldn't send data");
-
-        let mut buf = [0; 1024];
-        let (amt, src) = socket.recv_from(&mut buf)?;
-
-        // println!("{}", show(&buf[..]));
-
-        let h = DNSHeader::parse(&buf[..]);
-        println!("h: {:?}", h);
-
-        const HEADER_LENGTH: usize = 12;
-        let (q_len, q) = DNSQuestion::parse(&buf[..], HEADER_LENGTH);
-        println!("q: {}: {:?}", q_len, q);
-
-        let (r_len, r) = DNSRecord::parse(&buf[..], HEADER_LENGTH + q_len);
-        println!("r: {}: {:?}", r_len, r);
-
-        let p = DNSPacket::parse(&buf[..]);
-        println!("p: {:#?}", p);
-    } // the socket is closed here
+    let ip = lookup_domain("www.example.com".to_string());
+    println!("ip = {}", ip);
     Ok(())
 }
 
