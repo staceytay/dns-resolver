@@ -198,14 +198,6 @@ impl DNSPacket {
             authorities,
             additionals,
         }
-        //         reader = BytesIO(data)
-        // header = parse_header(reader)
-        // questions = [parse_question(reader) for _ in range(header.num_questions)]
-        // answers = [parse(reader) for _ in range(header.num_answers)]
-        // authorities = [parse(reader) for _ in range(header.num_authorities)]
-        // additionals = [parse(reader) for _ in range(header.num_additionals)]
-
-        // return DNSPacket(header, questions, answers, authorities, additionals)
     }
 }
 
@@ -223,7 +215,6 @@ fn decode_name(buf: &[u8], cursor_start: usize) -> (usize, String) {
             labels.push(decode_compressed_name(buf, cursor));
             cursor += 2;
             break;
-            // return (2, labels.join("."));
         } else {
             // Ignore length value in `start`.
             let (start, end) = (cursor + 1, cursor + length + 1);
@@ -252,7 +243,7 @@ fn lookup_domain(domain_name: String) -> String {
         .expect("couldn't send data");
 
     let mut buf = [0; 1024];
-    let (amt, src) = socket.recv_from(&mut buf).unwrap();
+    socket.recv_from(&mut buf).unwrap();
 
     let p = DNSPacket::parse(&buf[..]);
     println!("p: {:#?}", p);
@@ -267,6 +258,10 @@ fn lookup_domain(domain_name: String) -> String {
 
 fn main() -> std::io::Result<()> {
     let ip = lookup_domain("www.example.com".to_string());
+    println!("ip = {}", ip);
+    let ip = lookup_domain("recurse.com".to_string());
+    println!("ip = {}", ip);
+    let ip = lookup_domain("stace.dev".to_string());
     println!("ip = {}", ip);
     Ok(())
 }
