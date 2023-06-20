@@ -52,13 +52,17 @@ impl DNSHeader {
 
 impl DNSQuestion {
     // TODO: Return as Result.
-    fn parse(buf: &[u8], cursor: usize) -> (usize, DNSQuestion) {
-        let (length, name) = decode_name(buf, cursor);
-        let cursor = length + 1;
+    fn parse(buf: &[u8], cursor_start: usize) -> (usize, DNSQuestion) {
+        let mut cursor = cursor_start;
+
+        let (length, name) = decode_name(buf, cursor_start);
+        cursor += length;
+
         let type_ = u16::from_be_bytes(buf[cursor..cursor + 2].try_into().unwrap());
         let class = u16::from_be_bytes(buf[cursor + 2..cursor + 4].try_into().unwrap());
-        println!("parse_question: {}: {}", cursor, name.clone());
-        (cursor + 4, DNSQuestion { name, type_, class })
+        cursor += 4;
+
+        (cursor - cursor_start, DNSQuestion { name, type_, class })
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, &'static str> {
@@ -203,18 +207,15 @@ impl DNSPacket {
 
 // Returns length of bytes read from buf and decoded name.
 fn decode_name(buf: &[u8], cursor_start: usize) -> (usize, String) {
-    println!("decode_name: cursor_start = {}", cursor_start);
     let mut cursor: usize = cursor_start;
     let mut labels: Vec<String> = Vec::new();
     let mut length: usize = buf[cursor].into();
 
     while length != 0 {
         if ((length as u8) & 0b11000000) != 0 {
-            println!("decode_name: bitwise triggered at {}", cursor);
-            // Assumption: if the name is compressed, we'll get the entire domain name here.
             labels.push(decode_compressed_name(buf, cursor));
             cursor += 2;
-            break;
+            return (cursor - cursor_start, labels.join("."));
         } else {
             // Ignore length value in `start`.
             let (start, end) = (cursor + 1, cursor + length + 1);
@@ -223,6 +224,7 @@ fn decode_name(buf: &[u8], cursor_start: usize) -> (usize, String) {
             length = buf[cursor].into();
         }
     }
+    cursor += 1; // For the 0 at the end.
 
     (cursor - cursor_start, labels.join("."))
 }
