@@ -317,12 +317,12 @@ fn lookup_domain(domain_name: String) -> String {
     }
 }
 
-fn send_query(ip_address: &str, domain_name: &str, record_type: u16) -> DNSPacket {
+fn send_query(ip_address: Ipv4Addr, domain_name: &str, record_type: u16) -> DNSPacket {
     let query = build_query(domain_name.to_string(), record_type);
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
 
     socket
-        .send_to(&query, format!("{ip_address}:53"))
+        .send_to(&query, (ip_address, 53))
         .expect("couldn't send data");
 
     let mut buf = [0; 1024];
@@ -350,10 +350,11 @@ fn get_nameserver_ip(packet: &DNSPacket) -> Ipv4Addr {
 }
 
 fn resolve_wrong(domain_name: &str, record_type: u16) -> () {
-    let mut nameserver = "198.41.0.4".to_string();
+    let mut nameserver = Ipv4Addr::new(198, 41, 0, 4);
+
     loop {
         println!("Querying {nameserver} for {domain_name}");
-        let response = send_query(&nameserver, domain_name, record_type);
+        let response = send_query(nameserver, domain_name, record_type);
         let dns_record_data = get_answer(&response);
 
         // println!("resolve_wrong: response: {:#?}", response);
@@ -365,9 +366,7 @@ fn resolve_wrong(domain_name: &str, record_type: u16) -> () {
             }
             None => {
                 // println!("resolve_wrong: None");
-                let ns_ip = get_nameserver_ip(&response);
-                let nameserver_2 = ns_ip.to_string();
-                nameserver = nameserver_2;
+                nameserver = get_nameserver_ip(&response);
             }
         }
     }
