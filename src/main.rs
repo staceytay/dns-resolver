@@ -339,18 +339,57 @@ fn get_answer(packet: &DNSPacket) -> Option<&DNSRecordData> {
     }
 }
 
-fn get_nameserver_ip(packet: &DNSPacket) -> Ipv4Addr {
-    match packet.additionals.iter().find(|p| p.type_ == TYPE_A) {
-        Some(additional) => match additional.data {
-            DNSRecordData::Ipv4Addr(ip) => ip,
-            _ => panic!("get_nameserver_ip: no Ipv4Addr"),
+fn get_nameserver(packet: &DNSPacket) -> &str {
+    match packet.authorities.iter().find(|p| p.type_ == TYPE_NS) {
+        Some(record) => match &record.data {
+            DNSRecordData::Name(name) => name,
+            _ => panic!("get_nameserver: no data"),
         },
-        None => panic!("get_nameserver_ip: no TYPE_A answer"),
+        None => panic!("get_nameserver: no TYPE_NS authority"),
     }
 }
 
-fn resolve_wrong(domain_name: &str, record_type: u16) -> () {
-    let mut nameserver = Ipv4Addr::new(198, 41, 0, 4);
+// def get_nameserver(packet):
+//     # return the first NS record in the Authority section
+//     for x in packet.authorities:
+//         if x.type_ == TYPE_NS:
+//             return x.data.decode('utf-8')
+
+fn get_nameserver_ip(packet: &DNSPacket) -> Option<Ipv4Addr> {
+    match packet.additionals.iter().find(|p| p.type_ == TYPE_A) {
+        Some(additional) => match additional.data {
+            DNSRecordData::Ipv4Addr(ip) => Some(ip),
+            _ => panic!("get_nameserver_ip: no Ipv4Addr"),
+        },
+        _ => None,
+    }
+}
+
+// fn resolve_wrong(domain_name: &str, record_type: u16) -> () {
+//     let mut nameserver = Ipv4Addr::new(198, 41, 0, 4);
+
+//     loop {
+//         println!("Querying {nameserver} for {domain_name}");
+//         let response = send_query(nameserver, domain_name, record_type);
+//         let dns_record_data = get_answer(&response);
+
+//         // println!("resolve_wrong: response: {:#?}", response);
+//         // println!("resolve_wrong: dns_record_data: {:#?}", dns_record_data);
+//         match dns_record_data {
+//             Some(data) => {
+//                 println!("resolve_wrong: Answer {:#?}", data);
+//                 break;
+//             }
+//             None => {
+//                 // println!("resolve_wrong: None");
+//                 nameserver = get_nameserver_ip(&response);
+//             }
+//         }
+//     }
+// }
+
+fn resolve(domain_name: &str, record_type: u16) -> Ipv4Addr {
+    let mut nameserver = Ipv4Addr::new(198, 41, 0, 4); // IP address for a.root-servers.net
 
     loop {
         println!("Querying {nameserver} for {domain_name}");
@@ -361,17 +400,26 @@ fn resolve_wrong(domain_name: &str, record_type: u16) -> () {
         // println!("resolve_wrong: dns_record_data: {:#?}", dns_record_data);
         match dns_record_data {
             Some(data) => {
-                println!("resolve_wrong: Answer {:#?}", data);
-                break;
+                // println!("resolve_wrong: Answer {:#?}", data);
+                return match data {
+                    DNSRecordData::Ipv4Addr(ip) => *ip,
+                    _ => panic!("resolve: something went wrong"),
+                };
             }
             None => {
                 // println!("resolve_wrong: None");
-                nameserver = get_nameserver_ip(&response);
+                let ns_ip = get_nameserver_ip(&response);
+                match ns_ip {
+                    Some(ip) => nameserver = ip,
+                    None => {
+                        let ns_domain = get_nameserver(&response);
+                        nameserver = resolve(ns_domain, TYPE_A)
+                    }
+                }
             }
         }
     }
 }
-
 // def resolve_wrong(domain_name, record_type):
 //     nameserver = "198.41.0.4"
 //     while True:
@@ -403,10 +451,17 @@ fn main() -> std::io::Result<()> {
     //     send_query("198.41.0.4", "google.com", TYPE_A)
     // );
 
-    resolve_wrong("google.com", TYPE_A);
+    let ip = resolve("google.com", TYPE_A);
+    println!("ip = {ip}");
 
-    resolve_wrong("facebook.com", TYPE_A);
+    resolve("facebook.com", TYPE_A);
+    println!("ip = {ip}");
 
+    resolve("twitter.com", TYPE_A);
+    println!("ip = {ip}");
+
+    resolve("stace.dev", TYPE_A);
+    println!("ip = {ip}");
     Ok(())
 }
 
