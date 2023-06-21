@@ -6,6 +6,23 @@ use std::str;
 pub const TYPE_A: u16 = 1;
 const TYPE_NS: u16 = 2;
 
+pub struct Config {
+    pub domain_name: String,
+}
+
+impl Config {
+    pub fn build(mut args: impl Iterator<Item = String>) -> Result<Config, &'static str> {
+        args.next();
+
+        let domain_name = match args.next() {
+            Some(arg) => arg,
+            None => return Err("Didn't get a domain name"),
+        };
+
+        Ok(Config { domain_name })
+    }
+}
+
 #[derive(Debug)]
 struct DnsHeader {
     id: u16,

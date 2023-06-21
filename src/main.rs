@@ -2,19 +2,18 @@
 // references. Also perhaps the new to Rust and just translated this from
 // Julia's python code caveat should be in this comment too.
 
-use dns::{resolve, TYPE_A};
+use dns::{resolve, Config, TYPE_A};
+use std::env;
+use std::process;
 
 fn main() -> std::io::Result<()> {
-    let ip = resolve("google.com", TYPE_A);
+    let config = Config::build(env::args()).unwrap_or_else(|err| {
+        eprintln!("Problem parsing arguments: {err}");
+        process::exit(1);
+    });
+
+    let ip = resolve(&config.domain_name, TYPE_A);
     println!("ip = {ip}");
 
-    let ip = resolve("facebook.com", TYPE_A);
-    println!("ip = {ip}");
-
-    let ip = resolve("twitter.com", TYPE_A);
-    println!("ip = {ip}");
-
-    let ip = resolve("stace.dev", TYPE_A);
-    println!("ip = {ip}");
     Ok(())
 }
