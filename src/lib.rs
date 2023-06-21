@@ -1,4 +1,5 @@
 use rand::Rng;
+use std::error::Error;
 use std::net::Ipv4Addr;
 use std::net::UdpSocket;
 use std::str;
@@ -272,18 +273,20 @@ fn encode_dns_name(name: &str) -> String {
         + &String::from_utf8((0 as u8).to_be_bytes().to_vec()).unwrap()
 }
 
-fn send_query(ip_address: Ipv4Addr, domain_name: &str, record_type: u16) -> DnsPacket {
+fn send_query(
+    ip_address: Ipv4Addr,
+    domain_name: &str,
+    record_type: u16,
+) -> Result<DnsPacket, Box<dyn Error>> {
     let query = build_query(domain_name, record_type);
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
 
-    socket
-        .send_to(&query, (ip_address, 53))
-        .expect("couldn't send data");
+    socket.send_to(&query, (ip_address, 53))?;
 
     let mut buf = [0; 1024];
     socket.recv_from(&mut buf).unwrap();
 
-    DnsPacket::parse(&buf[..])
+    Ok(DnsPacket::parse(&buf[..]))
 }
 
 fn get_answer(packet: &DnsPacket) -> Option<&DnsRecordData> {
@@ -319,21 +322,21 @@ fn get_nameserver_ip(packet: &DnsPacket) -> Option<Ipv4Addr> {
 /// use dns::{resolve, TYPE_A};
 /// use std::net::Ipv4Addr;
 ///
-/// let ip = resolve("google.com", TYPE_A);
+/// let ip = resolve("google.com", TYPE_A).unwrap();
 /// println!("ip = {ip}"); // ip = 142.250.80.110
 /// ```
-pub fn resolve(domain_name: &str, record_type: u16) -> Ipv4Addr {
+pub fn resolve(domain_name: &str, record_type: u16) -> Result<Ipv4Addr, Box<dyn Error>> {
     let mut nameserver = Ipv4Addr::new(198, 41, 0, 4); // IP address for a.root-servers.net
 
     loop {
         println!("Querying {nameserver} for {domain_name}");
-        let response = send_query(nameserver, domain_name, record_type);
+        let response = send_query(nameserver, domain_name, record_type)?;
         let answer = get_answer(&response);
 
         match answer {
             Some(data) => {
                 return match data {
-                    DnsRecordData::Ipv4Addr(ip) => *ip,
+                    DnsRecordData::Ipv4Addr(ip) => Ok(*ip),
                     _ => panic!("resolve: something went wrong"),
                 };
             }
@@ -343,7 +346,7 @@ pub fn resolve(domain_name: &str, record_type: u16) -> Ipv4Addr {
                     Some(ip) => nameserver = ip,
                     None => {
                         let ns_domain = get_nameserver(&response);
-                        nameserver = resolve(ns_domain, TYPE_A)
+                        nameserver = resolve(ns_domain, TYPE_A)?
                     }
                 }
             }

@@ -12,7 +12,10 @@ fn main() -> std::io::Result<()> {
         process::exit(1);
     });
 
-    let ip = resolve(&config.domain_name, TYPE_A);
+    let ip = resolve(&config.domain_name, TYPE_A).unwrap_or_else(|err| {
+        eprintln!("Unexpected error: {err}");
+        process::exit(1);
+    });
     println!("ip = {ip}");
 
     Ok(())
