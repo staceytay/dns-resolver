@@ -3,6 +3,9 @@ use std::net::Ipv4Addr;
 use std::net::UdpSocket;
 use std::str;
 
+pub const TYPE_A: u16 = 1;
+const TYPE_NS: u16 = 2;
+
 #[derive(Debug)]
 struct DnsHeader {
     id: u16,
@@ -11,13 +14,6 @@ struct DnsHeader {
     num_answers: u16,
     num_authorities: u16,
     num_additionals: u16,
-}
-
-#[derive(Debug)]
-struct DnsQuestion {
-    name: String,
-    type_: u16,
-    class: u16,
 }
 
 impl DnsHeader {
@@ -45,6 +41,13 @@ impl DnsHeader {
     }
 }
 
+#[derive(Debug)]
+struct DnsQuestion {
+    name: String,
+    type_: u16,
+    class: u16,
+}
+
 impl DnsQuestion {
     fn parse(buf: &[u8], cursor_start: usize) -> (usize, DnsQuestion) {
         let mut cursor = cursor_start;
@@ -69,41 +72,6 @@ impl DnsQuestion {
     }
 }
 
-fn encode_dns_name(name: &str) -> String {
-    name.split('.')
-        .map(|t| String::from_utf8((t.len() as u8).to_be_bytes().to_vec()).unwrap() + t)
-        .collect::<Vec<_>>()
-        .join("")
-        + &String::from_utf8((0 as u8).to_be_bytes().to_vec()).unwrap()
-}
-
-pub const TYPE_A: u16 = 1;
-const TYPE_NS: u16 = 2;
-
-fn build_query(domain_name: &str, record_type: u16) -> Vec<u8> {
-    const CLASS_IN: u16 = 1;
-
-    let h = DnsHeader {
-        id: rand::thread_rng().gen_range(1..65535),
-        flags: 0,
-        num_questions: 1,
-        num_additionals: 0,
-        num_authorities: 0,
-        num_answers: 0,
-    };
-
-    let q = DnsQuestion {
-        name: encode_dns_name(&domain_name),
-        type_: record_type,
-        class: CLASS_IN,
-    };
-
-    let mut query = h.to_bytes();
-    query.extend(q.to_bytes());
-
-    query
-}
-
 #[derive(Debug)]
 enum DnsRecordData {
     Data(Vec<u8>),
@@ -118,15 +86,6 @@ struct DnsRecord {
     class: u16,
     ttl: u32,
     data: DnsRecordData,
-}
-
-#[derive(Debug)]
-struct DnsPacket {
-    header: DnsHeader,
-    questions: Vec<DnsQuestion>,
-    answers: Vec<DnsRecord>,
-    authorities: Vec<DnsRecord>,
-    additionals: Vec<DnsRecord>,
 }
 
 impl DnsRecord {
@@ -180,6 +139,15 @@ impl DnsRecord {
     }
 }
 
+#[derive(Debug)]
+struct DnsPacket {
+    header: DnsHeader,
+    questions: Vec<DnsQuestion>,
+    answers: Vec<DnsRecord>,
+    authorities: Vec<DnsRecord>,
+    additionals: Vec<DnsRecord>,
+}
+
 impl DnsPacket {
     fn parse(buf: &[u8]) -> DnsPacket {
         let header = DnsHeader::parse(buf);
@@ -225,6 +193,30 @@ impl DnsPacket {
     }
 }
 
+fn build_query(domain_name: &str, record_type: u16) -> Vec<u8> {
+    const CLASS_IN: u16 = 1;
+
+    let h = DnsHeader {
+        id: rand::thread_rng().gen_range(1..65535),
+        flags: 0,
+        num_questions: 1,
+        num_additionals: 0,
+        num_authorities: 0,
+        num_answers: 0,
+    };
+
+    let q = DnsQuestion {
+        name: encode_dns_name(&domain_name),
+        type_: record_type,
+        class: CLASS_IN,
+    };
+
+    let mut query = h.to_bytes();
+    query.extend(q.to_bytes());
+
+    query
+}
+
 // Returns length of bytes read from buf and decoded name.
 fn decode_name(buf: &[u8], cursor_start: usize) -> (usize, String) {
     let mut cursor: usize = cursor_start;
@@ -253,6 +245,14 @@ fn decode_compressed_name(buf: &[u8], cursor_start: usize) -> String {
     let cursor =
         u16::from_be_bytes([(buf[cursor_start] & 0b00111111), buf[cursor_start + 1]]) as usize;
     decode_name(buf, cursor).1
+}
+
+fn encode_dns_name(name: &str) -> String {
+    name.split('.')
+        .map(|t| String::from_utf8((t.len() as u8).to_be_bytes().to_vec()).unwrap() + t)
+        .collect::<Vec<_>>()
+        .join("")
+        + &String::from_utf8((0 as u8).to_be_bytes().to_vec()).unwrap()
 }
 
 fn send_query(ip_address: Ipv4Addr, domain_name: &str, record_type: u16) -> DnsPacket {
@@ -296,6 +296,15 @@ fn get_nameserver_ip(packet: &DnsPacket) -> Option<Ipv4Addr> {
     }
 }
 
+/// Returns the Ipv4Addr of a given domain_name.
+/// # Examples
+/// ```
+/// use dns::{resolve, TYPE_A};
+/// use std::net::Ipv4Addr;
+///
+/// let ip = resolve("google.com", TYPE_A);
+/// println!("ip = {ip}"); // ip = 142.250.80.110
+/// ```
 pub fn resolve(domain_name: &str, record_type: u16) -> Ipv4Addr {
     let mut nameserver = Ipv4Addr::new(198, 41, 0, 4); // IP address for a.root-servers.net
 
