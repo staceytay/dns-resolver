@@ -169,7 +169,7 @@ impl DNSRecord {
                     // );
                     panic!("...");
                 }
-                cursor += data_length;
+                cursor += length;
                 DNSRecordData::Name(name)
             }
             TYPE_A => {
@@ -185,8 +185,7 @@ impl DNSRecord {
                     buf[cursor + 2],
                     buf[cursor + 3],
                 );
-                // TODO: check if data_length here is always 4
-                cursor += data_length;
+                cursor += 4;
                 DNSRecordData::Ipv4Addr(ip)
             }
             _ => {
