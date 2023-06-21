@@ -36,8 +36,8 @@ impl DNSHeader {
         }
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, &'static str> {
-        let bytes: Vec<u8> = [
+    fn to_bytes(&self) -> Vec<u8> {
+        [
             self.id.to_be_bytes(),
             self.flags.to_be_bytes(),
             self.num_questions.to_be_bytes(),
@@ -45,13 +45,11 @@ impl DNSHeader {
             self.num_authorities.to_be_bytes(),
             self.num_additionals.to_be_bytes(),
         ]
-        .concat();
-        Ok(bytes)
+        .concat()
     }
 }
 
 impl DNSQuestion {
-    // TODO: Return as Result.
     fn parse(buf: &[u8], cursor_start: usize) -> (usize, DNSQuestion) {
         let mut cursor = cursor_start;
 
@@ -65,18 +63,17 @@ impl DNSQuestion {
         (cursor - cursor_start, DNSQuestion { name, type_, class })
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, &'static str> {
-        let bytes: Vec<u8> = [
+    fn to_bytes(&self) -> Vec<u8> {
+        [
             self.name.clone().into_bytes(),
             self.type_.to_be_bytes().to_vec(),
             self.class.to_be_bytes().to_vec(),
         ]
-        .concat();
-        Ok(bytes)
+        .concat()
     }
 }
 
-fn encode_dns_name(name: String) -> String {
+fn encode_dns_name(name: &str) -> String {
     name.split('.')
         .map(|t| String::from_utf8((t.len() as u8).to_be_bytes().to_vec()).unwrap() + t)
         .collect::<Vec<_>>()
@@ -87,13 +84,12 @@ fn encode_dns_name(name: String) -> String {
 const TYPE_A: u16 = 1;
 const TYPE_NS: u16 = 2;
 
-fn build_query(domain_name: String, record_type: u16) -> Vec<u8> {
+fn build_query(domain_name: &str, record_type: u16) -> Vec<u8> {
     const CLASS_IN: u16 = 1;
-    const RECURSION_DESIRED: u16 = 1 << 8;
 
     let h = DNSHeader {
         id: rand::thread_rng().gen_range(1..65535),
-        flags: RECURSION_DESIRED,
+        flags: 0,
         num_questions: 1,
         num_additionals: 0,
         num_authorities: 0,
@@ -101,13 +97,13 @@ fn build_query(domain_name: String, record_type: u16) -> Vec<u8> {
     };
 
     let q = DNSQuestion {
-        name: encode_dns_name(domain_name),
+        name: encode_dns_name(&domain_name),
         type_: record_type,
         class: CLASS_IN,
     };
 
-    let mut query = h.to_bytes().unwrap();
-    query.extend(q.to_bytes().unwrap());
+    let mut query = h.to_bytes();
+    query.extend(q.to_bytes());
 
     query
 }
@@ -118,9 +114,6 @@ enum DNSRecordData {
     Ipv4Addr(Ipv4Addr),
     Name(String),
 }
-
-// TODO
-enum DNSRecordType {}
 
 #[derive(Debug)]
 struct DNSRecord {
@@ -261,35 +254,13 @@ fn decode_name(buf: &[u8], cursor_start: usize) -> (usize, String) {
 }
 
 fn decode_compressed_name(buf: &[u8], cursor_start: usize) -> String {
-    let pointer =
+    let cursor =
         u16::from_be_bytes([(buf[cursor_start] & 0b00111111), buf[cursor_start + 1]]) as usize;
-    decode_name(buf, pointer).1
-}
-
-// TODO: Maybe update domain_name to &str?
-fn lookup_domain(domain_name: String) -> String {
-    let query = build_query(domain_name, TYPE_A);
-    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
-
-    socket
-        .send_to(&query, "8.8.8.8:53")
-        .expect("couldn't send data");
-
-    let mut buf = [0; 1024];
-    socket.recv_from(&mut buf).unwrap();
-
-    let p = DNSPacket::parse(&buf[..]);
-
-    let data = &p.answers[0].data;
-
-    match data {
-        DNSRecordData::Ipv4Addr(ip) => ip.to_string(),
-        _ => panic!("lookup_domain: unexpected data"),
-    }
+    decode_name(buf, cursor).1
 }
 
 fn send_query(ip_address: Ipv4Addr, domain_name: &str, record_type: u16) -> DNSPacket {
-    let query = build_query(domain_name.to_string(), record_type);
+    let query = build_query(domain_name, record_type);
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
 
     socket
@@ -299,8 +270,7 @@ fn send_query(ip_address: Ipv4Addr, domain_name: &str, record_type: u16) -> DNSP
     let mut buf = [0; 1024];
     socket.recv_from(&mut buf).unwrap();
 
-    let p = DNSPacket::parse(&buf[..]);
-    p
+    DNSPacket::parse(&buf[..])
 }
 
 fn get_answer(packet: &DNSPacket) -> Option<&DNSRecordData> {
@@ -336,9 +306,9 @@ fn resolve(domain_name: &str, record_type: u16) -> Ipv4Addr {
     loop {
         println!("Querying {nameserver} for {domain_name}");
         let response = send_query(nameserver, domain_name, record_type);
-        let dns_record_data = get_answer(&response);
+        let answer = get_answer(&response);
 
-        match dns_record_data {
+        match answer {
             Some(data) => {
                 return match data {
                     DNSRecordData::Ipv4Addr(ip) => *ip,
@@ -390,16 +360,4 @@ fn main() -> std::io::Result<()> {
     let ip = resolve("stace.dev", TYPE_A);
     println!("ip = {ip}");
     Ok(())
-}
-
-use std::ascii::escape_default;
-
-// From https://stackoverflow.com/questions/41449708/how-to-print-a-u8-slice-as-text-if-i-dont-care-about-the-particular-encoding
-fn show(bs: &[u8]) -> String {
-    let mut visible = String::new();
-    for &b in bs {
-        let part: Vec<u8> = escape_default(b).collect();
-        visible.push_str(str::from_utf8(&part).unwrap());
-    }
-    visible
 }
