@@ -8,7 +8,7 @@ use std::net::UdpSocket;
 use std::str;
 
 #[derive(Debug)]
-struct DNSHeader {
+struct DnsHeader {
     id: u16,
     flags: u16,
     num_questions: u16,
@@ -18,15 +18,15 @@ struct DNSHeader {
 }
 
 #[derive(Debug)]
-struct DNSQuestion {
+struct DnsQuestion {
     name: String,
     type_: u16,
     class: u16,
 }
 
-impl DNSHeader {
-    fn parse(buf: &[u8]) -> DNSHeader {
-        DNSHeader {
+impl DnsHeader {
+    fn parse(buf: &[u8]) -> DnsHeader {
+        DnsHeader {
             id: u16::from_be_bytes(buf[0..2].try_into().unwrap()),
             flags: u16::from_be_bytes(buf[2..4].try_into().unwrap()),
             num_questions: u16::from_be_bytes(buf[4..6].try_into().unwrap()),
@@ -49,8 +49,8 @@ impl DNSHeader {
     }
 }
 
-impl DNSQuestion {
-    fn parse(buf: &[u8], cursor_start: usize) -> (usize, DNSQuestion) {
+impl DnsQuestion {
+    fn parse(buf: &[u8], cursor_start: usize) -> (usize, DnsQuestion) {
         let mut cursor = cursor_start;
 
         let (length, name) = decode_name(buf, cursor_start);
@@ -60,7 +60,7 @@ impl DNSQuestion {
         let class = u16::from_be_bytes(buf[cursor + 2..cursor + 4].try_into().unwrap());
         cursor += 4;
 
-        (cursor - cursor_start, DNSQuestion { name, type_, class })
+        (cursor - cursor_start, DnsQuestion { name, type_, class })
     }
 
     fn to_bytes(&self) -> Vec<u8> {
@@ -87,7 +87,7 @@ const TYPE_NS: u16 = 2;
 fn build_query(domain_name: &str, record_type: u16) -> Vec<u8> {
     const CLASS_IN: u16 = 1;
 
-    let h = DNSHeader {
+    let h = DnsHeader {
         id: rand::thread_rng().gen_range(1..65535),
         flags: 0,
         num_questions: 1,
@@ -96,7 +96,7 @@ fn build_query(domain_name: &str, record_type: u16) -> Vec<u8> {
         num_answers: 0,
     };
 
-    let q = DNSQuestion {
+    let q = DnsQuestion {
         name: encode_dns_name(&domain_name),
         type_: record_type,
         class: CLASS_IN,
@@ -109,32 +109,32 @@ fn build_query(domain_name: &str, record_type: u16) -> Vec<u8> {
 }
 
 #[derive(Debug)]
-enum DNSRecordData {
+enum DnsRecordData {
     Data(Vec<u8>),
     Ipv4Addr(Ipv4Addr),
     Name(String),
 }
 
 #[derive(Debug)]
-struct DNSRecord {
+struct DnsRecord {
     name: String,
     type_: u16,
     class: u16,
     ttl: u32,
-    data: DNSRecordData,
+    data: DnsRecordData,
 }
 
 #[derive(Debug)]
-struct DNSPacket {
-    header: DNSHeader,
-    questions: Vec<DNSQuestion>,
-    answers: Vec<DNSRecord>,
-    authorities: Vec<DNSRecord>,
-    additionals: Vec<DNSRecord>,
+struct DnsPacket {
+    header: DnsHeader,
+    questions: Vec<DnsQuestion>,
+    answers: Vec<DnsRecord>,
+    authorities: Vec<DnsRecord>,
+    additionals: Vec<DnsRecord>,
 }
 
-impl DNSRecord {
-    fn parse(buf: &[u8], cursor_start: usize) -> (usize, DNSRecord) {
+impl DnsRecord {
+    fn parse(buf: &[u8], cursor_start: usize) -> (usize, DnsRecord) {
         let mut cursor = cursor_start;
 
         let (length, name) = decode_name(buf, cursor);
@@ -152,7 +152,7 @@ impl DNSRecord {
             TYPE_NS => {
                 let (length, name) = decode_name(buf, cursor);
                 cursor += length;
-                DNSRecordData::Name(name)
+                DnsRecordData::Name(name)
             }
             TYPE_A => {
                 let ip = Ipv4Addr::new(
@@ -162,18 +162,18 @@ impl DNSRecord {
                     buf[cursor + 3],
                 );
                 cursor += 4;
-                DNSRecordData::Ipv4Addr(ip)
+                DnsRecordData::Ipv4Addr(ip)
             }
             _ => {
                 let data = (&buf[cursor..cursor + data_length]).to_vec();
                 cursor += data_length;
-                DNSRecordData::Data(data)
+                DnsRecordData::Data(data)
             }
         };
 
         (
             cursor - cursor_start,
-            DNSRecord {
+            DnsRecord {
                 name,
                 type_,
                 class,
@@ -184,42 +184,42 @@ impl DNSRecord {
     }
 }
 
-impl DNSPacket {
-    fn parse(buf: &[u8]) -> DNSPacket {
-        let header = DNSHeader::parse(buf);
+impl DnsPacket {
+    fn parse(buf: &[u8]) -> DnsPacket {
+        let header = DnsHeader::parse(buf);
 
         const HEADER_LENGTH: usize = 12;
         let mut cursor = HEADER_LENGTH;
 
         let mut questions = Vec::new();
         for _ in 0..header.num_questions {
-            let (length, question) = DNSQuestion::parse(buf, cursor);
+            let (length, question) = DnsQuestion::parse(buf, cursor);
             cursor += length;
             questions.push(question);
         }
 
         let mut answers = Vec::new();
         for _ in 0..header.num_answers {
-            let (length, answer) = DNSRecord::parse(buf, cursor);
+            let (length, answer) = DnsRecord::parse(buf, cursor);
             cursor += length;
             answers.push(answer);
         }
 
         let mut authorities = Vec::new();
         for _ in 0..header.num_authorities {
-            let (length, authority) = DNSRecord::parse(buf, cursor);
+            let (length, authority) = DnsRecord::parse(buf, cursor);
             cursor += length;
             authorities.push(authority);
         }
 
         let mut additionals = Vec::new();
         for _ in 0..header.num_additionals {
-            let (length, additional) = DNSRecord::parse(buf, cursor);
+            let (length, additional) = DnsRecord::parse(buf, cursor);
             cursor += length;
             additionals.push(additional);
         }
 
-        DNSPacket {
+        DnsPacket {
             header,
             questions,
             answers,
@@ -259,7 +259,7 @@ fn decode_compressed_name(buf: &[u8], cursor_start: usize) -> String {
     decode_name(buf, cursor).1
 }
 
-fn send_query(ip_address: Ipv4Addr, domain_name: &str, record_type: u16) -> DNSPacket {
+fn send_query(ip_address: Ipv4Addr, domain_name: &str, record_type: u16) -> DnsPacket {
     let query = build_query(domain_name, record_type);
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
 
@@ -270,30 +270,30 @@ fn send_query(ip_address: Ipv4Addr, domain_name: &str, record_type: u16) -> DNSP
     let mut buf = [0; 1024];
     socket.recv_from(&mut buf).unwrap();
 
-    DNSPacket::parse(&buf[..])
+    DnsPacket::parse(&buf[..])
 }
 
-fn get_answer(packet: &DNSPacket) -> Option<&DNSRecordData> {
+fn get_answer(packet: &DnsPacket) -> Option<&DnsRecordData> {
     match packet.answers.iter().find(|p| p.type_ == TYPE_A) {
         Some(answer) => Some(&answer.data),
         _ => None,
     }
 }
 
-fn get_nameserver(packet: &DNSPacket) -> &str {
+fn get_nameserver(packet: &DnsPacket) -> &str {
     match packet.authorities.iter().find(|p| p.type_ == TYPE_NS) {
         Some(record) => match &record.data {
-            DNSRecordData::Name(name) => name,
+            DnsRecordData::Name(name) => name,
             _ => panic!("get_nameserver: no data"),
         },
         None => panic!("get_nameserver: no TYPE_NS authority"),
     }
 }
 
-fn get_nameserver_ip(packet: &DNSPacket) -> Option<Ipv4Addr> {
+fn get_nameserver_ip(packet: &DnsPacket) -> Option<Ipv4Addr> {
     match packet.additionals.iter().find(|p| p.type_ == TYPE_A) {
         Some(additional) => match additional.data {
-            DNSRecordData::Ipv4Addr(ip) => Some(ip),
+            DnsRecordData::Ipv4Addr(ip) => Some(ip),
             _ => panic!("get_nameserver_ip: no Ipv4Addr"),
         },
         _ => None,
@@ -311,7 +311,7 @@ fn resolve(domain_name: &str, record_type: u16) -> Ipv4Addr {
         match answer {
             Some(data) => {
                 return match data {
-                    DNSRecordData::Ipv4Addr(ip) => *ip,
+                    DnsRecordData::Ipv4Addr(ip) => *ip,
                     _ => panic!("resolve: something went wrong"),
                 };
             }
