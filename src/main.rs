@@ -158,27 +158,10 @@ impl DNSRecord {
         let data = match type_ {
             TYPE_NS => {
                 let (length, name) = decode_name(buf, cursor);
-                // TODO: Why is data_length and length here not the same?
-                // println!("DNSRecord: parse: data_length = {data_length}, length = {length}");
-                if data_length != length {
-                    // println!("DNSRecord: parse: name = {}", name);
-                    // println!(
-                    //     "DNSRecord: parse: cursor = {}, buf = {}",
-                    //     cursor,
-                    //     show(&buf[cursor..])
-                    // );
-                    panic!("...");
-                }
                 cursor += length;
                 DNSRecordData::Name(name)
             }
             TYPE_A => {
-                // let ip = (&buf[cursor..cursor + data_length])
-                //     .to_vec()
-                //     .iter()
-                //     .map(|t| t.to_string())
-                //     .collect::<Vec<_>>()
-                //     .join(".");
                 let ip = Ipv4Addr::new(
                     buf[cursor],
                     buf[cursor + 1],
@@ -215,12 +198,9 @@ impl DNSPacket {
         const HEADER_LENGTH: usize = 12;
         let mut cursor = HEADER_LENGTH;
 
-        // println!("Header: {:?}", &buf[0..HEADER_LENGTH]);
-
         let mut questions = Vec::new();
         for _ in 0..header.num_questions {
             let (length, question) = DNSQuestion::parse(buf, cursor);
-            // println!("Question: {:?}", &buf[cursor..cursor + length]);
             cursor += length;
             questions.push(question);
         }
@@ -228,7 +208,6 @@ impl DNSPacket {
         let mut answers = Vec::new();
         for _ in 0..header.num_answers {
             let (length, answer) = DNSRecord::parse(buf, cursor);
-            // println!("Answer: {}", show(&buf[cursor..cursor + length]));
             cursor += length;
             answers.push(answer);
         }
@@ -300,17 +279,10 @@ fn lookup_domain(domain_name: String) -> String {
     socket.recv_from(&mut buf).unwrap();
 
     let p = DNSPacket::parse(&buf[..]);
-    println!("p: {:#?}", p);
-    // println!("{}", show(&buf[..]));
 
     let data = &p.answers[0].data;
 
     match data {
-        // DNSRecordData::Data(data) => data
-        //     .iter()
-        //     .map(|t| t.to_string())
-        //     .collect::<Vec<_>>()
-        //     .join("."),
         DNSRecordData::Ipv4Addr(ip) => ip.to_string(),
         _ => panic!("lookup_domain: unexpected data"),
     }
@@ -334,7 +306,7 @@ fn send_query(ip_address: Ipv4Addr, domain_name: &str, record_type: u16) -> DNSP
 fn get_answer(packet: &DNSPacket) -> Option<&DNSRecordData> {
     match packet.answers.iter().find(|p| p.type_ == TYPE_A) {
         Some(answer) => Some(&answer.data),
-        _ => None, // None => panic!("get_answer: no TYPE_A answer"),
+        _ => None,
     }
 }
 
@@ -348,12 +320,6 @@ fn get_nameserver(packet: &DNSPacket) -> &str {
     }
 }
 
-// def get_nameserver(packet):
-//     # return the first NS record in the Authority section
-//     for x in packet.authorities:
-//         if x.type_ == TYPE_NS:
-//             return x.data.decode('utf-8')
-
 fn get_nameserver_ip(packet: &DNSPacket) -> Option<Ipv4Addr> {
     match packet.additionals.iter().find(|p| p.type_ == TYPE_A) {
         Some(additional) => match additional.data {
@@ -364,29 +330,6 @@ fn get_nameserver_ip(packet: &DNSPacket) -> Option<Ipv4Addr> {
     }
 }
 
-// fn resolve_wrong(domain_name: &str, record_type: u16) -> () {
-//     let mut nameserver = Ipv4Addr::new(198, 41, 0, 4);
-
-//     loop {
-//         println!("Querying {nameserver} for {domain_name}");
-//         let response = send_query(nameserver, domain_name, record_type);
-//         let dns_record_data = get_answer(&response);
-
-//         // println!("resolve_wrong: response: {:#?}", response);
-//         // println!("resolve_wrong: dns_record_data: {:#?}", dns_record_data);
-//         match dns_record_data {
-//             Some(data) => {
-//                 println!("resolve_wrong: Answer {:#?}", data);
-//                 break;
-//             }
-//             None => {
-//                 // println!("resolve_wrong: None");
-//                 nameserver = get_nameserver_ip(&response);
-//             }
-//         }
-//     }
-// }
-
 fn resolve(domain_name: &str, record_type: u16) -> Ipv4Addr {
     let mut nameserver = Ipv4Addr::new(198, 41, 0, 4); // IP address for a.root-servers.net
 
@@ -395,18 +338,14 @@ fn resolve(domain_name: &str, record_type: u16) -> Ipv4Addr {
         let response = send_query(nameserver, domain_name, record_type);
         let dns_record_data = get_answer(&response);
 
-        // println!("resolve_wrong: response: {:#?}", response);
-        // println!("resolve_wrong: dns_record_data: {:#?}", dns_record_data);
         match dns_record_data {
             Some(data) => {
-                // println!("resolve_wrong: Answer {:#?}", data);
                 return match data {
                     DNSRecordData::Ipv4Addr(ip) => *ip,
                     _ => panic!("resolve: something went wrong"),
                 };
             }
             None => {
-                // println!("resolve_wrong: None");
                 let ns_ip = get_nameserver_ip(&response);
                 match ns_ip {
                     Some(ip) => nameserver = ip,
@@ -419,17 +358,6 @@ fn resolve(domain_name: &str, record_type: u16) -> Ipv4Addr {
         }
     }
 }
-// def resolve_wrong(domain_name, record_type):
-//     nameserver = "198.41.0.4"
-//     while True:
-//         print(f"Querying {nameserver} for {domain_name}")
-//         response = send_query(nameserver, domain_name, record_type)
-//         if ip := get_answer(response):
-//             return ip
-//         elif nsIP := get_nameserver_ip(response):
-//             nameserver = nsIP
-//         else:
-//             raise Exception("something went wrong")
 
 fn main() -> std::io::Result<()> {
     // let ip = lookup_domain("www.example.com".to_string());
@@ -453,13 +381,13 @@ fn main() -> std::io::Result<()> {
     let ip = resolve("google.com", TYPE_A);
     println!("ip = {ip}");
 
-    resolve("facebook.com", TYPE_A);
+    let ip = resolve("facebook.com", TYPE_A);
     println!("ip = {ip}");
 
-    resolve("twitter.com", TYPE_A);
+    let ip = resolve("twitter.com", TYPE_A);
     println!("ip = {ip}");
 
-    resolve("stace.dev", TYPE_A);
+    let ip = resolve("stace.dev", TYPE_A);
     println!("ip = {ip}");
     Ok(())
 }
