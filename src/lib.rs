@@ -5,6 +5,7 @@ use std::net::UdpSocket;
 use std::str;
 
 pub const TYPE_A: u16 = 1;
+const TYPE_CNAME: u16 = 5;
 const TYPE_NS: u16 = 2;
 
 pub struct Config {
@@ -122,11 +123,6 @@ impl DnsRecord {
         cursor += 10;
 
         let data = match type_ {
-            TYPE_NS => {
-                let (length, name) = decode_name(buf, cursor);
-                cursor += length;
-                DnsRecordData::Name(name)
-            }
             TYPE_A => {
                 let ip = Ipv4Addr::new(
                     buf[cursor],
@@ -136,6 +132,11 @@ impl DnsRecord {
                 );
                 cursor += 4;
                 DnsRecordData::Ipv4Addr(ip)
+            }
+            TYPE_CNAME | TYPE_NS => {
+                let (length, name) = decode_name(buf, cursor);
+                cursor += length;
+                DnsRecordData::Name(name)
             }
             _ => {
                 let data = (&buf[cursor..cursor + data_length]).to_vec();
@@ -289,13 +290,6 @@ fn send_query(
     Ok(DnsPacket::parse(&buf[..]))
 }
 
-fn get_answer(packet: &DnsPacket) -> Option<&DnsRecordData> {
-    match packet.answers.iter().find(|p| p.type_ == TYPE_A) {
-        Some(answer) => Some(&answer.data),
-        _ => None,
-    }
-}
-
 fn get_nameserver(packet: &DnsPacket) -> &str {
     match packet.authorities.iter().find(|p| p.type_ == TYPE_NS) {
         Some(record) => match &record.data {
@@ -331,15 +325,27 @@ pub fn resolve(domain_name: &str, record_type: u16) -> Result<Ipv4Addr, Box<dyn 
     loop {
         println!("Querying {nameserver} for {domain_name}");
         let response = send_query(nameserver, domain_name, record_type)?;
-        let answer = get_answer(&response);
+        let first_answer = response
+            .answers
+            .iter()
+            .find(|p| p.type_ == TYPE_A || p.type_ == TYPE_CNAME);
 
-        match answer {
-            Some(data) => {
-                return match data {
-                    DnsRecordData::Ipv4Addr(ip) => Ok(*ip),
-                    _ => panic!("resolve: something went wrong"),
-                };
-            }
+        match first_answer {
+            Some(answer) => match answer {
+                DnsRecord {
+                    data: DnsRecordData::Ipv4Addr(ip),
+                    type_: TYPE_A,
+                    ..
+                } => return Ok(*ip),
+                DnsRecord {
+                    data: DnsRecordData::Name(name),
+                    type_: TYPE_CNAME,
+                    ..
+                } => return resolve(name, TYPE_A),
+                _ => {
+                    panic!("resolve: something went wrong")
+                }
+            },
             None => {
                 let ns_ip = get_nameserver_ip(&response);
                 match ns_ip {
