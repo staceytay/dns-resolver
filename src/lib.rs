@@ -296,6 +296,13 @@ fn send_query(
     Ok(DnsPacket::parse(&buf[..]))
 }
 
+fn get_answer(packet: &DnsPacket) -> Option<&DnsRecord> {
+    packet
+        .answers
+        .iter()
+        .find(|p| p.type_ == TYPE_A || p.type_ == TYPE_CNAME)
+}
+
 fn get_nameserver(packet: &DnsPacket) -> &str {
     match packet.authorities.iter().find(|p| p.type_ == TYPE_NS) {
         Some(record) => match &record.data {
@@ -331,13 +338,9 @@ pub fn resolve(domain_name: &str, record_type: u16) -> Result<Ipv4Addr, Box<dyn 
     loop {
         println!("Querying {nameserver} for {domain_name}");
         let response = send_query(nameserver, domain_name, record_type)?;
-        let first_answer = response
-            .answers
-            .iter()
-            .find(|p| p.type_ == TYPE_A || p.type_ == TYPE_CNAME);
 
-        match first_answer {
-            Some(answer) => match answer {
+        if let Some(answer) = get_answer(&response) {
+            match answer {
                 DnsRecord {
                     data: DnsRecordData::Ipv4Addr(ip),
                     type_: TYPE_A,
@@ -351,17 +354,12 @@ pub fn resolve(domain_name: &str, record_type: u16) -> Result<Ipv4Addr, Box<dyn 
                 _ => {
                     panic!("resolve: something went wrong")
                 }
-            },
-            None => {
-                let ns_ip = get_nameserver_ip(&response);
-                match ns_ip {
-                    Some(ip) => nameserver = ip,
-                    None => {
-                        let ns_domain = get_nameserver(&response);
-                        nameserver = resolve(ns_domain, TYPE_A)?
-                    }
-                }
             }
+        } else if let Some(ip) = get_nameserver_ip(&response) {
+            nameserver = ip;
+        } else {
+            let ns_domain = get_nameserver(&response);
+            nameserver = resolve(ns_domain, TYPE_A)?;
         }
     }
 }
