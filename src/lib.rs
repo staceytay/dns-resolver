@@ -313,12 +313,14 @@ fn get_nameserver(packet: &DnsPacket) -> &str {
     }
 }
 
-fn get_nameserver_ip(packet: &DnsPacket) -> Option<Ipv4Addr> {
+fn get_nameserver_ip(packet: &DnsPacket) -> Option<(&str, Ipv4Addr)> {
     match packet.additionals.iter().find(|p| p.type_ == TYPE_A) {
-        Some(additional) => match additional.data {
-            DnsRecordData::Ipv4Addr(ip) => Some(ip),
-            _ => panic!("get_nameserver_ip: no Ipv4Addr"),
-        },
+        Some(additional) => {
+            return match additional.data {
+                DnsRecordData::Ipv4Addr(ip) => Some((&additional.name, ip)),
+                _ => panic!("get_nameserver_ip: no Ipv4Addr"),
+            };
+        }
         _ => None,
     }
 }
@@ -333,11 +335,14 @@ fn get_nameserver_ip(packet: &DnsPacket) -> Option<Ipv4Addr> {
 /// println!("ip = {ip}"); // ip = 142.250.80.110
 /// ```
 pub fn resolve(domain_name: &str, record_type: u16) -> Result<Ipv4Addr, Box<dyn Error>> {
-    let mut nameserver = Ipv4Addr::new(198, 41, 0, 4); // IP address for a.root-servers.net
+    let (mut nameserver_name, mut nameserver_ip) = (
+        String::from("a.root-servers.net"),
+        Ipv4Addr::new(198, 41, 0, 4),
+    );
 
     loop {
-        println!("Querying {nameserver} for {domain_name}");
-        let response = send_query(nameserver, domain_name, record_type)?;
+        println!("Querying {nameserver_name} ({nameserver_ip}) for {domain_name}",);
+        let response = send_query(nameserver_ip, domain_name, record_type)?;
 
         if let Some(answer) = get_answer(&response) {
             match answer {
@@ -355,11 +360,13 @@ pub fn resolve(domain_name: &str, record_type: u16) -> Result<Ipv4Addr, Box<dyn 
                     panic!("resolve: something went wrong")
                 }
             }
-        } else if let Some(ip) = get_nameserver_ip(&response) {
-            nameserver = ip;
+        } else if let Some((name, ip)) = get_nameserver_ip(&response) {
+            nameserver_name = name.to_string();
+            nameserver_ip = ip;
         } else {
             let ns_domain = get_nameserver(&response);
-            nameserver = resolve(ns_domain, TYPE_A)?;
+            nameserver_name = ns_domain.to_string();
+            nameserver_ip = resolve(ns_domain, TYPE_A)?;
         }
     }
 }
