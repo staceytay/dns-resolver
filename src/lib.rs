@@ -10,6 +10,7 @@ const TYPE_NS: u16 = 2;
 
 pub struct Config {
     pub domain_name: String,
+    pub record_type: u16,
 }
 
 impl Config {
@@ -21,7 +22,12 @@ impl Config {
             None => return Err("Didn't get a domain name"),
         };
 
-        Ok(Config { domain_name })
+        let record_type = TYPE_A;
+
+        Ok(Config {
+            domain_name,
+            record_type,
+        })
     }
 }
 
