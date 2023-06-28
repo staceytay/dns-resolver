@@ -325,7 +325,9 @@ fn get_nameserver_ip(packet: &DnsPacket) -> Option<(&str, Ipv4Addr)> {
     }
 }
 
-/// Returns the Ipv4Addr of a given domain_name.
+/// Given a `domain_name` and `record_type`, `resolve` queries the DNS root
+/// server a.root-servers.net and a chain of nameservers to obtain the
+/// `Ipv4Addr` of `domain_name`.
 /// # Examples
 /// ```
 /// use dns::{resolve, TYPE_A};
