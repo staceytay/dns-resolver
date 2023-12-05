@@ -1,6 +1,8 @@
 # Rust DNS Resolver
 
-Toy DNS resolver written in Rust, inspired by Julia Evans' [Implement DNS in a weekend](https://implement-dns.wizardzines.com).
+Toy DNS resolver written in Rust, inspired by Julia Evans' [Implement DNS in a
+weekend](https://implement-dns.wizardzines.com). I also wrote about the
+experience of working on this [here](https://stace.dev/writing-a-dns-resolver/).
 
 ## Features
 - [x] Return IP address for A record queries
